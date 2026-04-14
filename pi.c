@@ -9,7 +9,7 @@
 
 int main(int argc, char *argv[]) {
   int rank, size;
-  double t_began, t_end;
+  double t_begin, t_end;
   const long int intervals = 100000000L ; /* The sum is [globally]
 					     divided into this many
 					     intervals     */
