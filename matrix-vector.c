@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* print result */
-    printf("Final w = A^T A x:\n");
+    printf("Final rw_global = A^T A x:\n");
     for (j = 0; j < N; j++) {
       printf("%f ", rw_global[j]);
     }
