@@ -15,5 +15,5 @@ pi: pi.c
 matrix: matrix-vector.c
 	$(CC) $(CCFLAGS) -o matrix-vector matrix-vector.c $(LIBS)
 clean:
-	$(RM) $(BINS)
+	$(RM) $(BINS) matrix-vector
 
