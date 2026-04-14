@@ -9,6 +9,7 @@
 
 int main(int argc, char *argv[]) {
   int rank, size;
+  double t_began, t_end;
   const long int intervals = 100000000L ; /* The sum is [globally]
 					     divided into this many
 					     intervals     */
@@ -20,7 +21,8 @@ int main(int argc, char *argv[]) {
 
   MPI_Comm_size(MPI_COMM_WORLD, &size); /* Get the number of processors */
   MPI_Comm_rank(MPI_COMM_WORLD, &rank); /* Get my number                */
-
+  
+  t_begin = MPI_Wtime();
   chunk  = intervals/size;       /* (We assume this is an integer)   */
   istart = rank*chunk;           /* Calculate start and stop indices */
   istop  = (rank + 1)*chunk - 1; /* for the local loop               */
@@ -47,7 +49,9 @@ int main(int argc, char *argv[]) {
 	      rank equal to zero */
     MPI_Send(&sum, 1, MPI_DOUBLE, 0, rank, MPI_COMM_WORLD);
   }
-
+  
+  t_end = MPI_Wtime();
+  printf("Elapsed time : %1.2f\n", t_end-t_begin);
   MPI_Finalize(); /* Shut down and clean up MPI */
 
   return 0;
