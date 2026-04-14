@@ -10,9 +10,10 @@ BINS = pi
 
 all: $(BINS)
 
-%: %.c
-	$(CC) $(CCFLAGS) -o $@ $< $(LIBS)
-
+pi: pi.c
+	$(CC) $(CCFLAGS) -o pi pi.c $(LIBS)
+matrix: matrix-vector.c
+	$(CC) $(CCFLAGS) -o matrix-vector matrix-vector.c $(LIBS)
 clean:
 	$(RM) $(BINS)
 
