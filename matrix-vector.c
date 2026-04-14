@@ -1,6 +1,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define N 4   // vector size (columns of A)
 #define K 3   // rows per process
