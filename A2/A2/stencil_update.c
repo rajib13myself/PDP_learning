@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
         local_output = tmp;
     }
 
-    double my_time = MPI_Wtime() - start;
+    double my_execution_time = MPI_Wtime() - start;
 
     // =========================
     // GATHER RESULT
@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
     // TIMING
     // =========================
     double max_time;
-    MPI_Reduce(&my_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&my_execution_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
         printf("%f\n", max_time);
