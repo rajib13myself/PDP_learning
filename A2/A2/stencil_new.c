@@ -2,14 +2,13 @@
 
 int main(int argc, char **argv) {
 
-    MPI_Init(&argc , &argv);
+    MPI_Init(&argc, &argv);
 
     int rank, size;
-    MPI_Status status;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if (4 != argc) {
+    if (argc != 4) {
         if (rank == 0) {
             printf("Usage: stencil input_file output_file number_of_applications\n");
         }
@@ -21,96 +20,131 @@ int main(int argc, char **argv) {
     char *output_name = argv[2];
     int num_steps = atoi(argv[3]);
 
-    // read input only on rank 0
+    int num_values = 0;
     double *input = NULL;
-    int num_values;
 
+    // -------------------------
+    // Rank 0 reads input only
+    // -------------------------
     if (rank == 0) {
-        if (0 > (num_values = read_input(input_name, &input))) {
+        if (read_input(input_name, &input) < 0) {
             MPI_Abort(MPI_COMM_WORLD, 2);
         }
     }
+    if (rank == 0) {
+        num_values = read_input(input_name, &input);
+    }
 
+    // Broadcast number of values
     MPI_Bcast(&num_values, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     int local_n = num_values / size;
 
-    double *local_input  = malloc((local_n + 4) * sizeof(double));
-    double *local_output = malloc((local_n + 4) * sizeof(double));
+    // -------------------------
+    // Allocate local arrays with ghost cells
+    // [0,1] = left ghost
+    // [2..local_n+1] = real data
+    // [local_n+2, local_n+3] = right ghost
+    // -------------------------
+    double *local_in  = calloc(local_n + 4, sizeof(double));
+    double *local_out = calloc(local_n + 4, sizeof(double));
 
+    // -------------------------
+    // Scatter data (only rank 0 uses input buffer)
+    // -------------------------
     MPI_Scatter(input, local_n, MPI_DOUBLE,
-                &local_input[2], local_n, MPI_DOUBLE,
+                &local_in[2], local_n, MPI_DOUBLE,
                 0, MPI_COMM_WORLD);
 
-    double h = 2.0 * PI / num_values;
-    const int STENCIL_WIDTH = 5;
-    const int EXTENT = STENCIL_WIDTH / 2;
-    const double STENCIL[] =
-        {1.0/(12*h), -8.0/(12*h), 0.0, 8.0/(12*h), -1.0/(12*h)};
+    free(input);
 
-    int left_neigh  = (rank - 1 + size) % size;
-    int right_neigh = (rank + 1) % size;
+    // Stencil setup
+    double h = 2.0 * PI / num_values;
+    const int W = 5;
+    const int EXT = W / 2;
+
+    const double stencil[5] = {
+        1.0 / (12 * h),
+        -8.0 / (12 * h),
+        0.0,
+        8.0 / (12 * h),
+        -1.0 / (12 * h)
+    };
+
+    int left = (rank - 1 + size) % size;
+    int right = (rank + 1) % size;
 
     MPI_Barrier(MPI_COMM_WORLD);
     double start = MPI_Wtime();
 
+    // -------------------------
+    // Stencil iterations
+    // -------------------------
     for (int s = 0; s < num_steps; s++) {
 
-        // exchange ghost cells
-        MPI_Sendrecv(&local_input[2], 2, MPI_DOUBLE, left_neigh, 0,
-                     &local_input[local_n + 2], 2, MPI_DOUBLE, right_neigh, 0,
-                     MPI_COMM_WORLD, &status);
+        // Halo exchange
+        MPI_Sendrecv(&local_in[2], 2, MPI_DOUBLE, left, 0,
+                     &local_in[local_n + 2], 2, MPI_DOUBLE, right, 0,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        MPI_Sendrecv(&local_input[local_n], 2, MPI_DOUBLE, right_neigh, 1,
-                     &local_input[0], 2, MPI_DOUBLE, left_neigh, 1,
-                     MPI_COMM_WORLD, &status);
+        MPI_Sendrecv(&local_in[local_n], 2, MPI_DOUBLE, right, 1,
+                     &local_in[0], 2, MPI_DOUBLE, left, 1,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        // stencil computation
+        // Stencil computation
         for (int i = 2; i < local_n + 2; i++) {
-            double result = 0;
-            for (int j = 0; j < STENCIL_WIDTH; j++) {
-                int index = i - EXTENT + j;
-                result += STENCIL[j] * local_input[index];
+            double sum = 0.0;
+
+            for (int j = 0; j < W; j++) {
+                int idx = i - EXT + j;
+                sum += stencil[j] * local_in[idx];
             }
-            local_output[i] = result;
+
+            local_out[i] = sum;
         }
 
-        // swap buffers
-        double *tmp = local_input;
-        local_input = local_output;
-        local_output = tmp;
+        // Swap buffers
+        double *tmp = local_in;
+        local_in = local_out;
+        local_out = tmp;
     }
 
-    double end = MPI_Wtime();
-    double local_time = end - start;
+    double local_time = MPI_Wtime() - start;
 
-    // compute max time
-    double max_time;
-    MPI_Reduce(&local_time, &max_time, 1, MPI_DOUBLE,
-               MPI_MAX, 0, MPI_COMM_WORLD);
-
-    // gather final result
+    // -------------------------
+    // Gather results
+    // -------------------------
     double *output = NULL;
     if (rank == 0) {
         output = malloc(num_values * sizeof(double));
     }
 
-    MPI_Gather(&local_input[2], local_n, MPI_DOUBLE,
+    MPI_Gather(&local_in[2], local_n, MPI_DOUBLE,
                output, local_n, MPI_DOUBLE,
                0, MPI_COMM_WORLD);
 
+    // -------------------------
+    // Reduce timing (MAX time)
+    // -------------------------
+    double max_time = 0.0;
+    MPI_Reduce(&local_time, &max_time, 1, MPI_DOUBLE,
+               MPI_MAX, 0, MPI_COMM_WORLD);
+
+    // -------------------------
+    // Output (rank 0 only)
+    // -------------------------
     if (rank == 0) {
         printf("%f\n", max_time);
+
+#ifdef PRODUCE_OUTPUT_FILE
         write_output(output_name, output, num_values);
-    }
+#endif
 
-    free(local_input);
-    free(local_output);
-
-    if (rank == 0) {
-        free(input);
         free(output);
     }
+
+    free(local_in);
+    free(local_out);
 
     MPI_Finalize();
     return 0;
