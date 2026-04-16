@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
                      &local_input[EXTENT + local_n], EXTENT, MPI_DOUBLE, right_neigh, 0,
                      MPI_COMM_WORLD, &status);
 
-		MPI_Sendrecv(&local_input[local_n], EXTENT, MPI_DOUBLE, right_neigh, 1,
+		MPI_Sendrecv(&local_input[EXTENT + local_n - EXTENT], EXTENT, MPI_DOUBLE, right_neigh, 1,
                      &local_input[0], EXTENT, MPI_DOUBLE, left_neigh, 1,
                      MPI_COMM_WORLD, &status);
 
