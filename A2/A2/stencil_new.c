@@ -40,9 +40,13 @@ int main(int argc, char **argv) {
     const int STENCIL_WIDTH = 5;
     const int EXTENT = STENCIL_WIDTH / 2;
 
-    const double STENCIL[] = {
+    /*const double STENCIL[] = {
         1.0/(12*h), -8.0/(12*h), 0.0,
         8.0/(12*h), -1.0/(12*h)
+    };*/
+
+    const double STENCIL[] = {
+        1.0/16, 4.0/16, 6.0/16, 4.0/16, 1.0/16
     };
 
     // =========================
