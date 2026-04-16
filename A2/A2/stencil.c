@@ -25,8 +25,11 @@ int main(int argc, char **argv) {
 	// Read input file
 	double *input = NULL;
 	int num_values;
-	if (0 > (num_values = read_input(input_name, &input))) {
-		return 2;
+
+	if (rank == 0) {
+		if (0 > (num_values = read_input(input_name, &input))) {
+			MPI_Abort(MPI_COMM_WORLD, 2);
+		}
 	}
 
 	// Broadcast size
@@ -129,7 +132,13 @@ int main(int argc, char **argv) {
 	// Write result
 	
 	if (rank == 0) {
-    	printf("%f\n", my_execution_time);
+    	//printf("%f\n", my_execution_time);
+		double max_time;
+		MPI_Reduce(&my_execution_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+		if (rank == 0) {
+    		printf("%f\n", max_time);
+		}
 
 		#ifdef PRODUCE_OUTPUT_FILE
     		if (0 != write_output(output_name, output, num_values)) {
