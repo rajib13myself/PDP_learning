@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
 	int num_steps = atoi(argv[3]);
 
 	// Read input file
-	double *input;
+	double *input = NULL;
 	int num_values;
 	if (0 > (num_values = read_input(input_name, &input))) {
 		return 2;
@@ -35,48 +35,49 @@ int main(int argc, char **argv) {
 	//Divide work
 	int local_n = num_values / size;
 
-	//Allocate local arrays
-	double *local_input = malloc((local_n + 4) * sizeof(double));
-	double *local_output = malloc((local_n + 4) * sizeof(double));
-
-	//Scatter input
-	MPI_Scatter(input, local_n , MPI_DOUBLE , &local_input[2] , local_n , MPI_DOUBLE , 0 , MPI_COMM_WORLD);
-
 	// Stencil values
 	double h = 2.0*PI/num_values;
 	const int STENCIL_WIDTH = 5;
 	const int EXTENT = STENCIL_WIDTH/2;
 	const double STENCIL[] = {1.0/(12*h), -8.0/(12*h), 0.0, 8.0/(12*h), -1.0/(12*h)};
 
-	//Initialize Left and Right neighbour
-	int left_neigh = (rank -1 + size) % size;
-	int right_neigh = (rank +1) % size; 
+	//Allocate local arrays
+	double *local_input = malloc((local_n + 2*EXTENT) * sizeof(double));
+	double *local_output = malloc((local_n + 2*EXTENT) * sizeof(double));
+
+	//Verify Memory Allocation
+	if (!local_input || !local_output) {
+		perror("Memory Allocation Failed!");
+		MPI_Abort(MPI_COMM_WORLD, 3);
+	}
+	
+	//Scatter input
+	MPI_Scatter(input, local_n , MPI_DOUBLE , &local_input[EXTENT] , local_n , MPI_DOUBLE , 0 , MPI_COMM_WORLD);
+
+	
+	//Initialize Left and Right neighbour periodic
+	int left_neigh = (rank - 1 + size) % size;
+	int right_neigh = (rank + 1) % size; 
 
 	// Start timer
 	MPI_Barrier(MPI_COMM_WORLD);
 	double start = MPI_Wtime();
 
-	// Allocate data for result
-	/*double *output;
-	if (NULL == (output = malloc(num_values * sizeof(double)))) {
-		perror("Couldn't allocate memory for output");
-		return 2;
-	}*/
 	// Repeatedly apply stencil
 	for (int s=0; s<num_steps; s++) {
 		//Exchange Left and Right cells
-		MPI_Sendrecv(&local_input[2], 2, MPI_DOUBLE, left_neigh, 0,
-                     &local_input[local_n + 2], 2, MPI_DOUBLE, right_neigh, 0,
+		MPI_Sendrecv(&local_input[EXTENT], EXTENT, MPI_DOUBLE, left_neigh, 0,
+                     &local_input[EXTENT + local_n], EXTENT, MPI_DOUBLE, right_neigh, 0,
                      MPI_COMM_WORLD, &status);
 
-		MPI_Sendrecv(&local_input[local_n], 2, MPI_DOUBLE, right_neigh, 1,
-                     &local_input[0], 2, MPI_DOUBLE, left_neigh, 1,
+		MPI_Sendrecv(&local_input[local_n], EXTENT, MPI_DOUBLE, right_neigh, 1,
+                     &local_input[0], EXTENT, MPI_DOUBLE, left_neigh, 1,
                      MPI_COMM_WORLD, &status);
 
 		// Apply stencil with modification as per MPI
-		for (int i=2; i<local_n + 2; i++) {
-			double result = 0;
-			for (int j=0; j<STENCIL_WIDTH; j++) {
+		for (int i=EXTENT; i<local_n + EXTENT; i++) {
+			double result = 0.0;
+			for (int j=0; j < STENCIL_WIDTH; j++) {
 				int index = (i - EXTENT + j);
 				result += STENCIL[j] * local_input[index];
 			}
@@ -100,42 +101,41 @@ int main(int argc, char **argv) {
 		}*/
 
 		// Swap input and output
-		if (s < num_steps-1) {
-			double *tmp = local_input;
-			local_input = local_output;
-			local_output = tmp;
-		} /*else {
-			double *tmp = local_input;
-            local_input = local_output;
-            local_output = tmp;
-		}*/
+		
+		double *tmp = local_input;
+		local_input = local_output;
+		local_output = tmp;
+		
 	}
 	//free(input);
 	// Stop timer
 	double my_execution_time = MPI_Wtime() - start;
 
 	//Collect result
-	double *output;
-	if (NULL == (output = malloc(num_values * sizeof(double)))) {
-		perror("Couldn't allocate memory for output");
-		return 2;
+	double *output = NULL;
+
+	if (rank == 0) {
+    	output = malloc(num_values * sizeof(double));
+    	if (output == NULL) {
+        	perror("Couldn't allocate memory for output");
+        	MPI_Abort(MPI_COMM_WORLD, 2);
+    	}
 	}
-	MPI_Gather( &local_input[2] , local_n , MPI_DOUBLE , output , local_n , MPI_DOUBLE , 0 , MPI_COMM_WORLD);
+	
+	MPI_Gather(&local_input[EXTENT], local_n, MPI_DOUBLE,
+           output, local_n, MPI_DOUBLE,
+           0, MPI_COMM_WORLD);
 
 	// Write result
-	/*printf("%f\n", my_execution_time);
-	#ifdef PRODUCE_OUTPUT_FILE
-		if (0 != write_output(output_name, output, num_values)) {
-			return 2;
-		}
-	#endif
-	*/
+	
 	if (rank == 0) {
-    printf("%f\n", my_execution_time);
+    	printf("%f\n", my_execution_time);
 
-	#ifdef PRODUCE_OUTPUT_FILE
-    	write_output(output_name, output, num_values);
-	#endif
+		#ifdef PRODUCE_OUTPUT_FILE
+    		if (0 != write_output(output_name, output, num_values)) {
+        	MPI_Abort(MPI_COMM_WORLD, 3);
+    	}
+		#endif
 	}
 	// Clean up
 	free(local_input);
