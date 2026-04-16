@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     MPI_Bcast(&num_values, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     // =========================
-    // STENCIL (UNCHANGED)
+    // STENCIL
     // =========================
     double h = 2.0 * PI / num_values;
     const int STENCIL_WIDTH = 5;
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
     for (int s = 0; s < num_steps; s++) {
 
         // =========================
-        // HALO EXCHANGE
+        // EXCHANGE Left and Right
         // =========================
         MPI_Sendrecv(&local_input[EXTENT], EXTENT, MPI_DOUBLE, left, 0,
                      &local_input[EXTENT + local_n], EXTENT, MPI_DOUBLE, right, 0,
@@ -86,8 +86,7 @@ int main(int argc, char **argv) {
                      MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
         // ==========================================================
-        // YOUR ORIGINAL 3-LOOP STENCIL (UNCHANGED LOGIC)
-        // ONLY REPLACEMENT: input/output → local_input/local_output
+        // REPLACEMENT: input/output → local_input/local_output
         // AND GLOBAL INDEX → SHIFTED LOCAL INDEX
         // ==========================================================
 
@@ -95,30 +94,36 @@ int main(int argc, char **argv) {
         for (int i = 0; i < EXTENT; i++) {
             double result = 0;
             for (int j = 0; j < STENCIL_WIDTH; j++) {
-                int index = i - EXTENT + j + EXTENT; // shifted
+                //int index = i - EXTENT + j + EXTENT; //shifted
+                int index = (i - EXTENT + j + num_values) % num_values;
                 result += STENCIL[j] * local_input[index];
             }
-            local_output[i + EXTENT] = result;
+            //local_output[i + EXTENT] = result;
+            local_output[i] = result;
         }
 
         // 2. MIDDLE
-        for (int i = EXTENT; i < local_n - EXTENT; i++) {
+        //for (int i = EXTENT; i < local_n - EXTENT; i++) {
+        for (int i=EXTENT; i<num_values-EXTENT; i++) {
             double result = 0;
             for (int j = 0; j < STENCIL_WIDTH; j++) {
                 int index = i - EXTENT + j + EXTENT;
                 result += STENCIL[j] * local_input[index];
             }
-            local_output[i + EXTENT] = result;
+            //local_output[i + EXTENT] = result;
+            local_output[i] = result;
         }
 
         // 3. RIGHT BOUNDARY
-        for (int i = local_n - EXTENT; i < local_n; i++) {
+        //for (int i = local_n - EXTENT; i < local_n; i++) {
+        for (int i=num_values-EXTENT; i<num_values; i++) {
             double result = 0;
             for (int j = 0; j < STENCIL_WIDTH; j++) {
-                int index = i - EXTENT + j + EXTENT;
+                //int index = i - EXTENT + j + EXTENT;
+                int index = (i - EXTENT + j) % num_values;
                 result += STENCIL[j] * local_input[index];
             }
-            local_output[i + EXTENT] = result;
+            local_output[i] = result;
         }
 
         // swap
