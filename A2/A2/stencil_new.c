@@ -27,12 +27,10 @@ int main(int argc, char **argv) {
     // Rank 0 reads input only
     // -------------------------
     if (rank == 0) {
-        if (read_input(input_name, &input) < 0) {
+        num_values = read_input(input_name, &input);
+        if (num_values < 0) {
             MPI_Abort(MPI_COMM_WORLD, 2);
         }
-    }
-    if (rank == 0) {
-        num_values = read_input(input_name, &input);
     }
 
     // Broadcast number of values
@@ -55,7 +53,8 @@ int main(int argc, char **argv) {
     MPI_Scatter(input, local_n, MPI_DOUBLE,
                 &local_in[2], local_n, MPI_DOUBLE,
                 0, MPI_COMM_WORLD);
-
+    
+    printf("rank %d first local value = %f\n", rank, local_in[2]);
     free(input);
 
     // Stencil setup
@@ -82,26 +81,25 @@ int main(int argc, char **argv) {
     // -------------------------
     for (int s = 0; s < num_steps; s++) {
 
-        // Halo exchange
+        // Neighbour exchange
         MPI_Sendrecv(&local_in[2], 2, MPI_DOUBLE, left, 0,
-                     &local_in[local_n + 2], 2, MPI_DOUBLE, right, 0,
-                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+             &local_in[local_n + 2], 2, MPI_DOUBLE, right, 0,
+             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
         MPI_Sendrecv(&local_in[local_n], 2, MPI_DOUBLE, right, 1,
-                     &local_in[0], 2, MPI_DOUBLE, left, 1,
-                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+             &local_in[0], 2, MPI_DOUBLE, left, 1,
+             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
         // Stencil computation
         for (int i = 2; i < local_n + 2; i++) {
             double sum = 0.0;
 
             for (int j = 0; j < W; j++) {
-                int idx = i - EXT + j;
-                sum += stencil[j] * local_in[idx];
+                sum += stencil[j] * local_in[i - EXT + j];
             }
 
-            local_out[i] = sum;
-        }
+        local_out[i] = sum;
+    }
 
         // Swap buffers
         double *tmp = local_in;
