@@ -145,11 +145,10 @@ int main(int argc, char **argv) {
             MPI_Recv(input, num_values, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, &status);
         }
 
-        if (rank == 0) {
+        //Swap
             double *tmp = input;
             input = output;
             output = tmp;
-        }
     }
 
     double my_execution_time = MPI_Wtime() - start_time;
