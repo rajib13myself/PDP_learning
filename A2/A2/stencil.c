@@ -5,13 +5,13 @@ int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
 
     int rank, size;
+	MPI_Status status;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     if (4 != argc) {
-        if (rank == 0) {
+        if (rank == 0)
             printf("Usage: stencil input_file output_file number_of_applications\n");
-        }
         MPI_Finalize();
         return 1;
     }
@@ -20,22 +20,50 @@ int main(int argc, char **argv) {
     char *output_name = argv[2];
     int num_steps = atoi(argv[3]);
 
-    // =========================
-    // READ INPUT (rank 0 only)
-    // =========================
     double *input = NULL;
     int num_values;
 
+    // =========================
+    // Read input on rank 0
+    // =========================
     if (rank == 0) {
         if (0 > (num_values = read_input(input_name, &input))) {
             MPI_Abort(MPI_COMM_WORLD, 2);
         }
     }
 
-    MPI_Bcast(&num_values, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    // =========================
+    // Share num_values for all rank
+    // =========================
+    //MPI_Bcast(&num_values, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	if (rank == 0) {
+    	for (int p = 1; p < size; p++) {
+        	MPI_Send(&num_values, 1, MPI_INT, p, 0, MPI_COMM_WORLD);
+    	}
+	} else {
+    	MPI_Recv(&num_values, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+	}
 
     // =========================
-    // STENCIL
+    // Allocate input on others
+    // =========================
+    if (rank != 0) {
+        input = malloc(num_values * sizeof(double));
+    }
+
+    // =========================
+    // Manual broadcast
+    // =========================
+    if (rank == 0) {
+        for (int p = 1; p < size; p++) {
+            MPI_Send(input, num_values, MPI_DOUBLE, p, 0, MPI_COMM_WORLD);
+        }
+    } else {
+        MPI_Recv(input, num_values, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &status);
+    }
+
+    // =========================
+    // Stencil setup
     // =========================
     double h = 2.0 * PI / num_values;
     const int STENCIL_WIDTH = 5;
@@ -45,132 +73,101 @@ int main(int argc, char **argv) {
         8.0/(12*h), -1.0/(12*h)
     };
 
-    // =========================
-    // PARALLEL SETUP
-    // =========================
-    int local_n = num_values / size;
-
-    double *local_input  = malloc((local_n + 2*EXTENT) * sizeof(double));
-    double *local_output = malloc((local_n + 2*EXTENT) * sizeof(double));
-
-    if (!local_input || !local_output) {
-        perror("allocation failed");
-        MPI_Abort(MPI_COMM_WORLD, 3);
-    }
-
-    // Scatter
-    MPI_Scatter(input, local_n, MPI_DOUBLE,
-                &local_input[EXTENT], local_n, MPI_DOUBLE,
-                0, MPI_COMM_WORLD);
-
-    int left  = (rank - 1 + size) % size;
-    int right = (rank + 1) % size;
-
-    MPI_Barrier(MPI_COMM_WORLD);
-    double start = MPI_Wtime();
+    double *output = malloc(num_values * sizeof(double));
 
     // =========================
-    // TIME LOOP
+    // Work division
     // =========================
+    int chunk = num_values / size;
+    int start = rank * chunk;
+    int end = (rank == size - 1) ? num_values : start + chunk;
+
+    double start_time = MPI_Wtime();
+
     for (int s = 0; s < num_steps; s++) {
 
-        // =========================
-        // Left & Right Neighbour EXCHANGE 
-        // =========================
-
-        // send left, receive right 
-        MPI_Sendrecv(&local_input[EXTENT], EXTENT, MPI_DOUBLE, left, 0,
-                     &local_input[EXTENT + local_n], EXTENT, MPI_DOUBLE, right, 0,
-                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-        // send right, receive left 
-        MPI_Sendrecv(&local_input[local_n], EXTENT, MPI_DOUBLE, right, 1,
-                     &local_input[0], EXTENT, MPI_DOUBLE, left, 1,
-                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-         // -------------------------
-        // 1. LEFT BOUNDARY
-        // -------------------------
+        // --- Left Loop ---
         for (int i = 0; i < EXTENT; i++) {
-            double result = 0.0;
+            if (i < start || i >= end) continue;
+
+            double result = 0;
             for (int j = 0; j < STENCIL_WIDTH; j++) {
-                int index = i - EXTENT + j + EXTENT; 
-                result += STENCIL[j] * local_input[index];
+                int index = (i - EXTENT + j + num_values) % num_values;
+                result += STENCIL[j] * input[index];
             }
-            local_output[i + EXTENT] = result;
+            output[i] = result;
         }
 
-        // -------------------------
-        // 2. MIDDLE (MAIN REGION)
-        // -------------------------
-        for (int i = EXTENT; i < local_n - EXTENT; i++) {
-            double result = 0.0;
-            for (int j = 0; j < STENCIL_WIDTH; j++) {
-                int index = i - EXTENT + j + EXTENT;
-                result += STENCIL[j] * local_input[index];
-            }
-            local_output[i + EXTENT] = result;
-        }
+        // --- Middle Loop ---
+        for (int i = EXTENT; i < num_values - EXTENT; i++) {
+            if (i < start || i >= end) continue;
 
-        // -------------------------
-        // 3. RIGHT BOUNDARY
-        // -------------------------
-        for (int i = local_n - EXTENT; i < local_n; i++) {
-            double result = 0.0;
+            double result = 0;
             for (int j = 0; j < STENCIL_WIDTH; j++) {
                 int index = i - EXTENT + j + EXTENT;
-                result += STENCIL[j] * local_input[index];
+                result += STENCIL[j] * input[index];
             }
-            local_output[i + EXTENT] = result;
+            output[i] = result;
         }
 
-        // swap
-        double *tmp = local_input;
-        local_input = local_output;
-        local_output = tmp;
+        // --- Right Loop ---
+        for (int i = num_values - EXTENT; i < num_values; i++) {
+            if (i < start || i >= end) continue;
+
+            double result = 0;
+            for (int j = 0; j < STENCIL_WIDTH; j++) {
+                int index = (i - EXTENT + j) % num_values;
+                result += STENCIL[j] * input[index];
+            }
+            output[i] = result;
+        }
+
+        // =========================
+        // Gather results for output
+        // =========================
+        if (rank == 0) {
+            for (int p = 1; p < size; p++) {
+                int p_start = p * chunk;
+                int p_end = (p == size - 1) ? num_values : p_start + chunk;
+                MPI_Recv(&output[p_start], p_end - p_start, MPI_DOUBLE,
+                         p, 1, MPI_COMM_WORLD, &status);
+            }
+        } else {
+            MPI_Send(&output[start], end - start, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD);
+        }
+
+        // Broadcast updated array again
+        if (rank == 0) {
+            for (int p = 1; p < size; p++) {
+                MPI_Send(output, num_values, MPI_DOUBLE, p, 2, MPI_COMM_WORLD);
+            }
+        } else {
+            MPI_Recv(input, num_values, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD, &status);
+        }
+
+        if (rank == 0) {
+            double *tmp = input;
+            input = output;
+            output = tmp;
+        }
     }
 
-    double my_time = MPI_Wtime() - start;
-
-    // =========================
-    // GATHER RESULT
-    // =========================
-    double *output = NULL;
+    double my_execution_time = MPI_Wtime() - start_time;
 
     if (rank == 0) {
-        output = malloc(num_values * sizeof(double));
+        printf("%f\n", my_execution_time);
+
+		#ifdef PRODUCE_OUTPUT_FILE
+        	write_output(output_name, input, num_values);
+		#endif
     }
 
-    MPI_Gather(&local_input[EXTENT], local_n, MPI_DOUBLE,
-               output, local_n, MPI_DOUBLE,
-               0, MPI_COMM_WORLD);
-
-    // =========================
-    // TIMING
-    // =========================
-    double max_time;
-    MPI_Reduce(&my_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-
-    if (rank == 0) {
-        printf("%f\n", max_time);
-
-#ifdef PRODUCE_OUTPUT_FILE
-        write_output(output_name, output, num_values);
-#endif
-    }
-
-    free(local_input);
-    free(local_output);
-
-    if (rank == 0) {
-        free(input);
-        free(output);
-    }
+    free(input);
+    free(output);
 
     MPI_Finalize();
     return 0;
 }
-
 
 int read_input(const char *file_name, double **values) {
 	FILE *file;
