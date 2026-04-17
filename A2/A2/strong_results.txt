@@ -1,0 +1,10 @@
+Strong Scaling Results
+======================
+Processes: 1
+0.000077
+Processes: 2
+0.000169
+Processes: 4
+0.000188
+Processes: 8
+0.000219

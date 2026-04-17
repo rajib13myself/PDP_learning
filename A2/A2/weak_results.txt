@@ -1,0 +1,10 @@
+Weak Scaling Results
+====================
+Processes: 1 Input: /proj/uppmax2026-1-92/A2/input120.txt
+0.000043
+Processes: 2 Input: /proj/uppmax2026-1-92/A2/input120.txt
+0.000107
+Processes: 4 Input: /proj/uppmax2026-1-92/A2/input120.txt
+0.026977
+Processes: 8 Input: /proj/uppmax2026-1-92/A2/input120.txt
+0.000148
