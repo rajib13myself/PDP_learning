@@ -1,16 +1,16 @@
 ###############################################################################
-# Makefile for assignment 2, Parallel and Distributed Computing.
+# Makefile for assignment 1, Parallel and Distributed Computing
 ###############################################################################
 
 CC = mpicc
 CFLAGS = -std=c99 -g -O3
 LIBS = -lm
 
-BIN = stencil
+BIN = sum
 
 all: $(BIN)
 
-stencil: stencil_new.c stencil.h
+sum: sum.c
 	$(CC) $(CFLAGS) -o $@ $< $(LIBS)
 	
 clean:

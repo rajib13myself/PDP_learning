@@ -1,5 +1,8 @@
 #include "stencil.h"
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <mpi.h>
+#include <math.h>
 
 int main(int argc, char **argv) {
 
@@ -16,155 +19,188 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    char *input_name = argv[1];
+    char *input_name  = argv[1];
     char *output_name = argv[2];
-    int num_steps = atoi(argv[3]);
+    int num_steps     = atoi(argv[3]);
 
     double *input = NULL;
     int num_values;
 
     // =========================
-    // 1. Read input for rank 0
+    // READ INPUT
     // =========================
     if (rank == 0) {
-        if (0 > (num_values = read_input(input_name, &input))) {
+        num_values = read_input(input_name, &input);
+        if (num_values < 0) {
             MPI_Abort(MPI_COMM_WORLD, 2);
         }
     }
 
-    // =========================
-    // 2. Share num_values
-    // =========================
     MPI_Bcast(&num_values, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     // =========================
-    // 3. Define stencil
+    // STENCIL SETUP
     // =========================
     double h = 2.0 * PI / num_values;
     const int STENCIL_WIDTH = 5;
     const int EXTENT = STENCIL_WIDTH / 2;
 
-    const double STENCIL[] = {
+    const double STENCIL[5] = {
         1.0/(12*h), -8.0/(12*h), 0.0,
         8.0/(12*h), -1.0/(12*h)
     };
 
-    // =========================
-    // 4. Local data allocation
-    // =========================
     int local_n = num_values / size;
 
-    // Declare local input and output
+    // =========================
+    // BUFFERS
+    // =========================
     double *local_input  = malloc((local_n + 2*EXTENT) * sizeof(double));
     double *local_output = malloc((local_n + 2*EXTENT) * sizeof(double));
 
-    if (!local_input || !local_output) {
+    double *left_ghost  = malloc(EXTENT * sizeof(double));
+    double *right_ghost = malloc(EXTENT * sizeof(double));
+
+    if (!local_input || !local_output || !left_ghost || !right_ghost) {
         perror("malloc failed");
         MPI_Abort(MPI_COMM_WORLD, 3);
     }
 
     // =========================
-    // 5. Scatter data 
+    // SCATTER INPUT
     // =========================
     MPI_Scatter(input, local_n, MPI_DOUBLE,
                 &local_input[EXTENT], local_n, MPI_DOUBLE,
                 0, MPI_COMM_WORLD);
 
-    // =========================
-    // 6. Define neighbours (periodic)
-    // =========================
     int left  = (rank - 1 + size) % size;
     int right = (rank + 1) % size;
 
     // =========================
-    // 7. Start timing 
+    // INITIAL HALO EXCHANGE (CRITICAL)
     // =========================
+    MPI_Sendrecv(&local_input[EXTENT], EXTENT, MPI_DOUBLE,
+                 left, 0,
+                 right_ghost, EXTENT, MPI_DOUBLE,
+                 right, 0,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    MPI_Sendrecv(&local_input[EXTENT + local_n - EXTENT], EXTENT, MPI_DOUBLE,
+                 right, 1,
+                 left_ghost, EXTENT, MPI_DOUBLE,
+                 left, 1,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    for (int i = 0; i < EXTENT; i++) {
+        local_input[i] = left_ghost[i];
+        local_input[EXTENT + local_n + i] = right_ghost[i];
+    }
+
     MPI_Barrier(MPI_COMM_WORLD);
     double start_time = MPI_Wtime();
 
     // =========================
-    // 8. Stencil iterations
+    // TIME LOOP
     // =========================
     for (int s = 0; s < num_steps; s++) {
 
-        // -------------------------
-        // Exchange between Left and Right 
-        // -------------------------
+        // =========================
+        // HALO EXCHANGE
+        // =========================
+        MPI_Sendrecv(&local_input[EXTENT], EXTENT, MPI_DOUBLE,
+                    left, 0,
+                    left_ghost, EXTENT, MPI_DOUBLE,
+                    right, 0,
+                    MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        // Send left boundary → receive right ghost
-        MPI_Sendrecv(&local_input[EXTENT], EXTENT, MPI_DOUBLE, left, 0,
-                     &local_input[EXTENT + local_n], EXTENT, MPI_DOUBLE, right, 0,
-                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Sendrecv(&local_input[EXTENT + local_n - EXTENT], EXTENT, MPI_DOUBLE,
+                    right, 1,
+                    right_ghost, EXTENT, MPI_DOUBLE,
+                    left, 1,
+                    MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-        // Send right boundary → receive left ghost
-        MPI_Sendrecv(&local_input[EXTENT + local_n - EXTENT], EXTENT, MPI_DOUBLE, right, 1,
-                     &local_input[0], EXTENT, MPI_DOUBLE, left, 1,
-                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-        // -------------------------
-        // Apply stencil (local only)
-        // -------------------------
+        // =========================
+        // STENCIL COMPUTATION
+        // =========================
         for (int i = EXTENT; i < EXTENT + local_n; i++) {
 
             double result = 0.0;
 
             for (int j = 0; j < STENCIL_WIDTH; j++) {
-                result += STENCIL[j] * local_input[i - EXTENT + j];
+
+                int idx = i - EXTENT + j;
+
+                if (idx < EXTENT) {
+                    result += STENCIL[j] * left_ghost[idx];
+                }
+                else if (idx >= EXTENT + local_n) {
+                    result += STENCIL[j] * right_ghost[idx - EXTENT - local_n];
+                }
+                else {
+                    result += STENCIL[j] * local_input[idx];
+                }
             }
 
             local_output[i] = result;
         }
 
-        // -------------------------
-        // Swap input/output
-        // -------------------------
+        // swap
         double *tmp = local_input;
         local_input = local_output;
         local_output = tmp;
     }
 
     // =========================
-    // 9. Stop timing
+    // TIMING
     // =========================
-    double end_time = MPI_Wtime() - start_time;
+    double elapsed = MPI_Wtime() - start_time;
 
-    // Get maximum time across all processes
     double max_time;
-    MPI_Reduce(&end_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&elapsed, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
     // =========================
-    // 10. Gather final output result
+    // GATHER
     // =========================
     double *output = NULL;
+    int *recvcounts = NULL;
+    int *displs = NULL;
 
     if (rank == 0) {
         output = malloc(num_values * sizeof(double));
+        recvcounts = malloc(size * sizeof(int));
+        displs = malloc(size * sizeof(int));
+
+        for (int i = 0; i < size; i++) {
+            recvcounts[i] = local_n;
+            displs[i] = i * local_n;
+        }
     }
 
-    MPI_Gather(&local_input[EXTENT], local_n, MPI_DOUBLE,
-               output, local_n, MPI_DOUBLE,
-               0, MPI_COMM_WORLD);
+    MPI_Gatherv(&local_input[EXTENT], local_n, MPI_DOUBLE,
+                output, recvcounts, displs, MPI_DOUBLE,
+                0, MPI_COMM_WORLD);
 
     // =========================
-    // 11. Output results 
+    // OUTPUT
     // =========================
     if (rank == 0) {
 
         printf("%f\n", max_time);
-
-#ifdef PRODUCE_OUTPUT_FILE
         write_output(output_name, output, num_values);
-#endif
 
         free(input);
         free(output);
+        free(recvcounts);
+        free(displs);
     }
 
     // =========================
-    // 12. Cleanup
+    // CLEANUP
     // =========================
     free(local_input);
     free(local_output);
+    free(left_ghost);
+    free(right_ghost);
 
     MPI_Finalize();
     return 0;

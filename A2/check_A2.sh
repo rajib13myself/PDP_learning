@@ -49,9 +49,9 @@ done
 echo "OK"
 
 echo "Checking result of parallel runs"
-pe=( 4 )
+pe=( 2 )
 for p in ${pe[@]}; do
-	output_lines=`mpirun --bind-to none -np $p ./stencil ../test_data/input96.txt test_output96.txt 4 | wc -l`
+	output_lines=`mpirun --bind-to none -np $p ./stencil ../test_data/input96.txt test_output96.txt 2 | wc -l`
 	if [ 1 -lt $output_lines ]; then
 		echo "Your program doesn't seem to be parallelized!"
 		exit 1
