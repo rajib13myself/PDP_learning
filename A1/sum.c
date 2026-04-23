@@ -125,9 +125,7 @@ int main(int argc, char **argv) {
         for(int i=0;i<p_len;i++){
             printf("%d\t", p_values[i]);
             for(int j=0;j<n_len;j++){
-                //double Ts = n_values[j] * n_values[j];
                 double Ts = n_values[j];
-                //double Tp = Ts / p_values[i] + log2(p_values[i]);
                 double Tp = Ts / p_values[i] + log2(p_values[i]);
                 double S = Ts / Tp;
                 printf("%.2f\t", S);
@@ -142,9 +140,7 @@ int main(int argc, char **argv) {
         for(int i=0;i<p_len;i++){
             printf("%d\t", p_values[i]);
             for(int j=0;j<n_len;j++){
-                //double Ts = n_values[j] * n_values[j];
                 double Ts = n_values[j];
-                //double Tp = Ts / p_values[i] + log2(p_values[i]);
                 double Tp = Ts / p_values[i] + log2(p_values[i]);
                 double S = Ts / Tp;
                 double E = S / p_values[i];
@@ -159,7 +155,6 @@ int main(int argc, char **argv) {
         double k = 2.0; // Example: double processes
         double p_current = (double) size;
         double p_new = k * p_current;
-        //double n_new = n * (p_new + log2(p_new)) / (p_current + log2(p_current));
         double n_new = n * (p_new * log2(p_new)) / (p_current * log2(p_current));
 
         printf("\nTask 2.5 — Scalability Analysis\n");
