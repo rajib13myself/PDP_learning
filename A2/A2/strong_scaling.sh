@@ -4,7 +4,7 @@
 # Strong Scaling Experiment
 # =========================
 
-INPUT="../test_data/input1M.txt"   # change this
+INPUT="/proj/uppmax2026-1-92/A2/input4000000.txt"   # change this
 STEPS=50
 
 OUTPUT_DIR="./strong_results"
@@ -16,7 +16,7 @@ for P in 1 2 4 8
 do
     echo "Running strong scaling with P=$P"
 
-    OUT_FILE="$OUTPUT_DIR/output_P${P}.txt"
+    OUT_FILE="$OUTPUT_DIR/output400K_P${P}.txt"
 
     RESULT=$(mpirun --bind-to none -n $P ./stencil $INPUT $OUT_FILE $STEPS)
 
