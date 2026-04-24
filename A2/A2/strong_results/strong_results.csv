@@ -1,0 +1,5 @@
+Processes,N,Steps,Time
+Processes=1 N=4000000 Steps=50 Time=0.112825
+Processes=2 N=4000000 Steps=50 Time=0.057799
+Processes=4 N=4000000 Steps=50 Time=0.030857
+Processes=8 N=4000000 Steps=50 Time=0.016394
