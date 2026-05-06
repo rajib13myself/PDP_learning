@@ -3,20 +3,26 @@
 #include <mpi.h>
 #include "pivot.h"
 
-/* Comparison for qsort */
+/* Comparison for qsort (safe) */
 int compare(const void *v1, const void *v2) {
     int i1 = *(int*)v1;
     int i2 = *(int*)v2;
-    return i1 - i2;
+    return (i1 > i2) - (i1 < i2);
 }
 
-/* Find first index where element > val */
+/* Binary search: first index where element > val */
 int get_larger_index(int *elements, int n, int val) {
-    int i;
-    for (i = 0; i < n; i++) {
-        if (elements[i] > val) return i;
+    int left = 0, right = n;
+
+    while (left < right) {
+        int mid = (left + right) / 2;
+        if (elements[mid] <= val)
+            left = mid + 1;
+        else
+            right = mid;
     }
-    return n;
+
+    return left;
 }
 
 /* Get median from sorted array */
@@ -95,22 +101,6 @@ int select_pivot_median_median(int *elements, int n, MPI_Comm comm) {
         qsort(all_medians, size, sizeof(int), compare);
         pivot = all_medians[size / 2];
         free(all_medians);
-    }
-
-    MPI_Bcast(&pivot, 1, MPI_INT, ROOT, comm);
-
-    return get_larger_index(elements, n, pivot);
-}
-
-/* Optional: smallest element on root */
-int select_pivot_smallest_root(int *elements, int n, MPI_Comm comm) {
-    int rank;
-    MPI_Comm_rank(comm, &rank);
-
-    int pivot;
-
-    if (rank == ROOT) {
-        pivot = elements[0];
     }
 
     MPI_Bcast(&pivot, 1, MPI_INT, ROOT, comm);
