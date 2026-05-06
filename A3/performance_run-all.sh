@@ -1,10 +1,11 @@
 #!/bin/bash
-#SBATCH -A uppmax2026-1-92        # Project account (FIXES your error)
-#SBATCH -J quicksort_benchmark    # Job name
-#SBATCH -t 02:00:00               # Time limit (adjust if needed)
-#SBATCH -n 32                     # Max number of tasks you'll use
-#SBATCH --output=slurm_%j.out     # Stdout log
-#SBATCH --error=slurm_%j.err      # Stderr log
+#SBATCH -A uppmax2026-1-92
+#SBATCH -J quicksort_benchmark
+#SBATCH -t 00:15:00
+#SBATCH -n 4
+#SBATCH --mem=16G
+#SBATCH --output=slurm_%j.out
+#SBATCH --error=slurm_%j.err
 
 # Load MPI module (adjust if needed on your cluster)
 module load openmpi
