@@ -8,8 +8,8 @@
 #include "matrix.h"
 #include "power.h"
 
-#define N 1000
-#define MAX_ITER 200
+#define N 10000000
+#define MAX_ITER 500
 #define EPS 1e-6
 
 int main(int argc, char **argv) {
@@ -60,7 +60,10 @@ int main(int argc, char **argv) {
     normalize_vec(x, N);
     int comiter;
     double lambda_old = 0.0;
+    double start_time, end_time;
     //Compute Iteration loop
+    start_time = MPI_Wtime();
+
     for (comiter = 0; comiter < MAX_ITER; comiter++) {
         compute_local_matrix_vec_multiply(&A, x, local_y);
 
@@ -94,8 +97,12 @@ int main(int argc, char **argv) {
 
         lambda_old = lambda_com_local;
     }
+
+    end_time = MPI_Wtime();
+    double total_com_time = end_time - start_time;
+
     if (rank == 0) {
-        printf("Finished after %d iteration\n", comiter);
+        printf("Finished after %d iteration by taking %0.3f times\n", comiter, total_com_time);
     }
 
     free(x);
