@@ -8,7 +8,7 @@
 #include "matrix.h"
 #include "power.h"
 
-#define default_N 10000000
+#define DEFAULT_N 10000000
 #define MAX_ITER 500
 #define EPS 1e-6
 
@@ -21,9 +21,9 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     int local_N; 
     int begin_row;
-    int N = default_N
+    int N = DEFAULT_N;
 
-    if (argc>1) {
+    if(argc>1) {
         N = atoi(argv[1]);
     }
     
