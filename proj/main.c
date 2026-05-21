@@ -8,7 +8,7 @@
 #include "matrix.h"
 #include "power.h"
 
-#define N 10000000
+#define default_N 10000000
 #define MAX_ITER 500
 #define EPS 1e-6
 
@@ -19,8 +19,14 @@ int main(int argc, char **argv) {
     int rank; int size;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    int local_N; int begin_row;
+    int local_N; 
+    int begin_row;
+    int N = default_N
 
+    if (argc>1) {
+        N = atoi(argv[1]);
+    }
+    
     //Distribution of Rows
     rows_distribute(
      N, size, rank, &local_N, &begin_row
@@ -62,6 +68,7 @@ int main(int argc, char **argv) {
     double lambda_old = 0.0;
     double start_time, end_time;
     //Compute Iteration loop
+    MPI_Barrier(MPI_COMM_WORLD);
     start_time = MPI_Wtime();
 
     for (comiter = 0; comiter < MAX_ITER; comiter++) {
@@ -98,11 +105,32 @@ int main(int argc, char **argv) {
         lambda_old = lambda_com_local;
     }
 
+    MPI_Barrier(MPI_COMM_WORLD);
     end_time = MPI_Wtime();
     double total_com_time = end_time - start_time;
+    //Result file creation for MPI processes
+    FILE *output_file;
 
     if (rank == 0) {
-        printf("Finished after %d iteration by taking %0.3f times\n", comiter, total_com_time);
+        output_file = fopen("results.csv", "r");
+
+        if(output_file != NULL) {
+            fprintf(output_file, "%d,%d,%d,%f\n", size, N, comiter, total_com_time);
+            
+            fclose(output_file);
+        }
+    }
+
+    if (rank == 0) {
+        //printf("Finished after %d iteration by taking %0.3f times\n", comiter, total_com_time);
+        printf("\n");
+        printf("-----------Results are below---------------");
+        printf("MPI Processes : %d\n", size);
+        printf("Matrix size : %d\n", N);
+        printf("Total Iteration : %d\n", comiter);
+        printf("Total computation time : %f seconds\n", total_com_time);
+        printf("Final Lambda is : %.10f\n", lambda_old);
+        printf("-----------Results End for MPI processes :%d/n ---------------", size);
     }
 
     free(x);
