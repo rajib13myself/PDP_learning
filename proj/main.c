@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
     FILE *output_file;
 
     if (rank == 0) {
-        output_file = fopen("results.csv", "r");
+        output_file = fopen("results.csv", "a");
 
         if(output_file != NULL) {
             fprintf(output_file, "%d,%d,%d,%f\n", size, N, comiter, total_com_time);
@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
         printf("Total Iteration : %d\n", comiter);
         printf("Total computation time : %f seconds\n", total_com_time);
         printf("Final Lambda is : %.10f\n", lambda_old);
-        printf("-----------Results End for MPI processes :%d/n ---------------", size);
+        printf("-----------Results End for MPI processes : %d/n ---------------", size);
     }
 
     free(x);
