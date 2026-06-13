@@ -262,40 +262,47 @@ int main(int argc, char **argv) {
     //Broadcast size
     MPI_Bcast( &n , 1 , MPI_INT , ROOT , MPI_COMM_WORLD);
 
-    // Distributed data
+    /* Distributed data */
     int *local_elements;
-    int local_n = distribute_from_root(all_elements, n, &local_elements);
+    int local_n = distribute_from_root(all_elements,n,&local_elements);
 
-    //Local sort
-    qsort(local_elements, local_n, sizeof(int), compare);
-
-    //Start timeing for sorting
+    /*
+    * Start timing after data distribution.
+    * This excludes file I/O but includes
+    * local sorting and parallel quicksort.
+    */
     MPI_Barrier(MPI_COMM_WORLD);
     double start_time = MPI_Wtime();
 
-    //Global sort (step 3 & 4)
-    local_n = global_sort(&local_elements, local_n, MPI_COMM_WORLD, pivot_strategy);
+    /* Local sort */
+    qsort(local_elements,local_n,sizeof(int),compare);
 
-    MPI_Barrier( MPI_COMM_WORLD);
+    /* Recursive parallel quicksort */
+    local_n = global_sort(&local_elements,local_n,MPI_COMM_WORLD,pivot_strategy);
+
+    MPI_Barrier(MPI_COMM_WORLD);
     double end_time = MPI_Wtime();
 
-    //Collect result as per sorting
+    /* Prepare buffer for gathering */
     if (rank == ROOT) {
         free(all_elements);
-        all_elements = (int*) malloc(n * sizeof(int));
+        all_elements = malloc(n * sizeof(int));
     }
 
-    gather_on_root(all_elements, local_elements, local_n);
+    /* Gather final result */
+    gather_on_root(all_elements,local_elements,local_n);
 
-    //Print times and outputs in output_file
+    /* Print timing */
     if (rank == ROOT) {
+
         printf("%f\n", end_time - start_time);
 
-        //Verify and write output
-        check_and_print(all_elements, n, output_file);
+        check_and_print(all_elements,n,output_file);
     }
 
+    /* Cleanup */
     free(local_elements);
+
     if (rank == ROOT) {
         free(all_elements);
     }
