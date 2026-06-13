@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -A uppmax2026-1-92
 #SBATCH -J quicksort_benchmark
-#SBATCH -t 00:15:00
-#SBATCH -n 4
-#SBATCH --mem=16G
+#SBATCH -t 01:15:00
+#SBATCH -n 32
+#SBATCH --mem=64G
 #SBATCH --output=slurm_%j.out
 #SBATCH --error=slurm_%j.err
 
@@ -12,8 +12,8 @@ module load openmpi
 
 # Paths
 BASE=/proj/uppmax2026-1-92/A3/inputs
-BASE_BACK=/proj/uppmax2026-1-92/A3/inputs/backwards
-OUT=/proj/uppmax2026-1-92/rajib/PDP_Course/PDP_learning/A3/A3_output
+//BASE_BACK=/proj/uppmax2026-1-92/A3/inputs/backwards
+OUT=/proj/uppmax2026-1-92/uppmax2026-1-92/rajib/PDP_Course/PDP_learning/A3/A3_output
 
 mkdir -p "$OUT"
 
