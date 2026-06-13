@@ -232,17 +232,20 @@ int check_and_print(int *elements, int n, char *file_name) {
 
 //Main program for execution
 
-int main(int argc, char **argv) {
-    MPI_Init( &argc , &argv);
+int main(int argc, char **argv)
+{
+    MPI_Init(&argc, &argv);
 
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    //check arguments for perfect I/O
+    /* Check arguments */
     if (argc != 4) {
         if (rank == ROOT) {
-            printf("Usage: %s input_file output_file pivot_strategy\n", argv[0]);
+            printf("Usage: %s input_file output_file pivot_strategy\n",
+                   argv[0]);
         }
+
         MPI_Finalize();
         return 1;
     }
@@ -250,54 +253,89 @@ int main(int argc, char **argv) {
     char *input_file = argv[1];
     char *output_file = argv[2];
     int pivot_strategy = atoi(argv[3]);
-    
+
     int *all_elements = NULL;
     int n = 0;
 
-    //Read input file while at root
+    /* Read input on root */
     if (rank == ROOT) {
         n = read_input(input_file, &all_elements);
+
+        if (n < 0) {
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
     }
 
-    //Broadcast size
-    MPI_Bcast( &n , 1 , MPI_INT , ROOT , MPI_COMM_WORLD);
-
-    /* Distributed data */
-    int *local_elements;
-    int local_n = distribute_from_root(all_elements,n,&local_elements);
+    /* Broadcast total number of elements */
+    MPI_Bcast(&n, 1, MPI_INT, ROOT, MPI_COMM_WORLD);
 
     /*
-    * Start timing after data distribution.
-    * This excludes file I/O but includes
-    * local sorting and parallel quicksort.
-    */
+     * Distribute data to all processes.
+     * File I/O is excluded from timing.
+     */
+    int *local_elements = NULL;
+
+    int local_n = distribute_from_root(all_elements,
+                                       n,
+                                       &local_elements);
+
+    /*
+     * Free original input on root to save memory.
+     */
+    if (rank == ROOT) {
+        free(all_elements);
+        all_elements = NULL;
+    }
+
+    /*
+     * Start timing:
+     * Includes local sorting and recursive MPI quicksort.
+     */
     MPI_Barrier(MPI_COMM_WORLD);
+
     double start_time = MPI_Wtime();
 
     /* Local sort */
-    qsort(local_elements,local_n,sizeof(int),compare);
+    qsort(local_elements,
+          local_n,
+          sizeof(int),
+          compare);
 
-    /* Recursive parallel quicksort */
-    local_n = global_sort(&local_elements,local_n,MPI_COMM_WORLD,pivot_strategy);
+    /* Parallel recursive quicksort */
+    local_n = global_sort(&local_elements,
+                          local_n,
+                          MPI_COMM_WORLD,
+                          pivot_strategy);
 
     MPI_Barrier(MPI_COMM_WORLD);
+
     double end_time = MPI_Wtime();
 
-    /* Prepare buffer for gathering */
+    /*
+     * Gather sorted result for verification/output.
+     */
     if (rank == ROOT) {
-        free(all_elements);
         all_elements = malloc(n * sizeof(int));
+
+        if (all_elements == NULL) {
+            printf("Memory allocation failed on root.\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
     }
 
-    /* Gather final result */
-    gather_on_root(all_elements,local_elements,local_n);
+    gather_on_root(all_elements,
+                   local_elements,
+                   local_n);
 
-    /* Print timing */
+    /* Print execution time and verify correctness */
     if (rank == ROOT) {
 
-        printf("%f\n", end_time - start_time);
+        printf("Execution time: %.6f seconds\n",
+               end_time - start_time);
 
-        check_and_print(all_elements,n,output_file);
+        check_and_print(all_elements,
+                        n,
+                        output_file);
     }
 
     /* Cleanup */
@@ -306,9 +344,8 @@ int main(int argc, char **argv) {
     if (rank == ROOT) {
         free(all_elements);
     }
-    
-    MPI_Finalize();
-    return 0;
-    
 
+    MPI_Finalize();
+
+    return 0;
 }
